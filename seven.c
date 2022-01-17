@@ -4,34 +4,25 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+//#define PRINT_DEBUG // Turn this on for debug output
+
  /*
  * Thinking about how to organize the counters.
- * Each counter can be represented by a bit string.
-                 abcdefg    #   hex decimal value
- 0   abcefg      1110111 6  3   77  119
- 1   cf          0010010 2  1   12  018
- 2   acdeg       1011101 5  3   5d  093
- 3   acdfg       1011011 5  3   58  091
- 4   bcdf        0111010 4  1   3a  058
- 5   abdfg       1101011 5  3   68  107
- 6   abdefg      1101111 6  3   67  103
- 7   acf         1010010 3  1   52  082
- 8   abcdefg     1111111 7  1   7f  127
- 9   abcdfg      1111011 6  3   7b  123
+ * Each 7-segment counter can be represented by a bit string.
+ value  string      abcdefg    #   hex decimal value
+ 0      abcefg      1110111 6  3   77  119
+ 1      cf          0010010 2  1   12  018
+ 2      acdeg       1011101 5  3   5d  093
+ 3      acdfg       1011011 5  3   58  091
+ 4      bcdf        0111010 4  1   3a  058
+ 5      abdfg       1101011 5  3   68  107
+ 6      abdefg      1101111 6  3   67  103
+ 7      acf         1010010 3  1   52  082
+ 8      abcdefg     1111111 7  1   7f  127
+ 9      abcdfg      1111011 6  3   7b  123
  */
-
-typedef unsigned char segment_mask_t; // e.g., abcefg -> 1110111 -> 0x77 -> 119
-
-// Given the index of a signal, value is output segment mask.
-// e.g., index 0 has 1110111
-segment_mask_t rg_signal_to_output_mask[10];
-
-// Array of 10 unique input masks in the order received.
-segment_mask_t rg_input_mask[10];
-
-// Array parallel to rg_input_mask
-unsigned char rg_map_input_mask_to_value[10];
-
+// A segment_mask_t is a byte that contains one of 10 values
+typedef unsigned char segment_mask_t; // e.g., abcefg -> 1110111 = 0x77 
 
 /**
 * Count the number of segments in a segment_mask
@@ -47,157 +38,137 @@ unsigned char rg_map_input_mask_to_value[10];
     return count;
 }
 
-void map_masks_to_values(segment_mask_t* rg_mask, unsigned char* rg_value) {
-    unsigned char rg_segment_count[10];
-    unsigned char rg_output_value_to_input_value[10];
-    unsigned char input_mask_1, input_mask_7, input_mask_4, input_mask_3;
+/**
+* Given an array of 10 unique segment masks, map each to a value 0..9
+*
+* @param    ar_mask an array of 10 unique segment masks
+* @param    ar_value an array of 10 values to be returned
+*
+*/
+void map_masks_to_values(segment_mask_t ar_mask[10], unsigned char ar_value[10]) {
+    // Save these masks for our calculations. input_mask_7 has 7 segments, ect.
+    segment_mask_t input_mask_7, input_mask_4, input_mask6, input_mask8, input_mask9;
 #define UNDEFINED_MASK 0xFF
  
     // First pass: Get the values for 1, 4, 7, 8
     for (int mask_index = 0; mask_index < 10; mask_index++) {
-        // Set each value to undefined value
-        rg_value[mask_index] = UNDEFINED_MASK;
+        // Set each value to undefined value to be sure we fill in all the values.
+        ar_value[mask_index] = UNDEFINED_MASK;
 
-        unsigned char segment_count = count_segments(rg_mask[mask_index]);
-        rg_segment_count[mask_index] = segment_count;
+        // Get the next unique mask and segment count from the string of 10.
+        segment_mask_t mask = ar_mask[mask_index];
+        unsigned char segment_count = count_segments(mask);
         switch (segment_count) {
-            case 2: { // 2 segments is 1 
-                rg_value[mask_index] = 1; 
-                rg_output_value_to_input_value[2] = mask_index; 
-
-                // Save the mask value of 1
-                input_mask_1 = rg_mask[mask_index];
-                break; 
-            }
-            case 3: { // 3 segments is 7
-                rg_value[mask_index] = 7; 
-                rg_output_value_to_input_value[7] = mask_index; 
-
-                // Save the mask value of 7
-                input_mask_7 = rg_mask[mask_index];
+        case 2:  // 2 segments is 1 
+            ar_value[mask_index] = 1; 
+            break; 
+        case 3:  // 3 segments is 7
+            ar_value[mask_index] = 7; 
+            input_mask_7 = mask;
+            break;
+        case 4: // 4 segments is 4
+                ar_value[mask_index] = 4; 
+                input_mask_4 = mask;
                 break;
-            }
-        case 4: {// 4 segments is 4
-                rg_value[mask_index] = 4; 
-                rg_output_value_to_input_value[4] = mask_index; 
-
-                // Save the mask value of 4
-                input_mask_4 = rg_mask[mask_index];
-                break;
-            }
-        case 7: { // 7 segments is 8
-                rg_value[mask_index] = 8; 
-                rg_output_value_to_input_value[8] = mask_index; 
+        case 7:  // 7 segments is 8
+                ar_value[mask_index] = 8; 
+                input_mask8 = mask;
                 break; 
-            }
         }
     }
-    // Second pass: get the values for 3 and 5
+    // Second pass: get the values for 3, 6, 9
     for (int mask_index = 0; mask_index < 10; mask_index++) {
-        unsigned char segment_count = count_segments(rg_mask[mask_index]);
+        // Get the next unique mask and segment count from the string of 10.
+        segment_mask_t mask = ar_mask[mask_index];
+        unsigned char segment_count = count_segments(ar_mask[mask_index]);
         if (segment_count == 5) {
             /* The value is 
-            * 2   acdeg       1011101
-            * 3   acdfg       1011011
-            * 5   abdfg       1101011
-            * */
+            * 2   acdeg 1011101 or
+            * 3   acdfg 1011011 or
+            * 5   abdfg 1101011
+            */
             // If the mask has a '7' in it, it is a 3
-            if ((rg_mask[mask_index] & input_mask_7) == input_mask_7) {
-                rg_value[mask_index] = 3;
-                rg_output_value_to_input_value[3] = mask_index;
-                input_mask_3 = rg_mask[mask_index];
+            if ((mask & input_mask_7) == input_mask_7) {
+                ar_value[mask_index] = 3;
             }
         }
         else if (segment_count == 6) {
             /* The value is
-            * 0   abcefg      1110111
-            * 6   abdefg      1101111
-            * 9   abcdfg      1111011
-            * */
+            * 0   abcefg 1110111 or
+            * 6   abdefg 1101111 or
+            * 9   abcdfg 1111011
+            */
             // If the mask does not have a '7' in it, it is a 6
-            if ((rg_mask[mask_index] & input_mask_7) != input_mask_7) {
-                rg_value[mask_index] = 6;
-                rg_output_value_to_input_value[6] = mask_index;
-
+            if ((mask & input_mask_7) != input_mask_7) {
+                ar_value[mask_index] = 6;
+                input_mask6 = mask;
+            }
+            // If the mask has a '4' in it, it is a 9
+            else if ((mask & input_mask_4) == input_mask_4) {
+                ar_value[mask_index] = 9;
+                input_mask9 = mask;
+            }
+            // otherwise, it's a 0
+            else {
+                ar_value[mask_index] = 0;
             }
         }
     }
     
-    // Third pass: get the values for 0, 9
+    // Third pass: get value for 2, 5
+    // we have   1, 3, 4, 6, 7, 8, 9
+    /* 2 and 5 are missing
+     * 6 and 8 differ by one signal: c
+     * If we XOR 6 and 8, we will get the bit that represents signal c
+     * 2 and 3 have signal 3; 5 does not.
+     * 8 and 9 differ by one signal: e
+     * 2 has signal e; 3 and 5 do not
+     * If we XOR 8 and 9, we will get the bit that represents signal e
+     */
+    segment_mask_t signal_c = input_mask6 ^ input_mask8;
+    segment_mask_t signal_e = input_mask8 ^ input_mask9;
     for (int mask_index = 0; mask_index < 10; mask_index++) {
-        unsigned char segment_count = count_segments(rg_mask[mask_index]);
-        if (segment_count == 6) {
-            /* The value is
-            * 0   abcefg      1110111
-            * 6   abdefg      1101111
-            * 9   abcdfg      1111011
-            * */
-            // If the mask has a '3' in it, it is a 0
-            if ((rg_mask[mask_index] & input_mask_3) == input_mask_3) {
-                rg_value[mask_index] = 0;
-                rg_output_value_to_input_value[0] = mask_index;
-            }
-            // If the mask does not have a '4' in it, it is a 9
-            if ((rg_mask[mask_index] & input_mask_4) != input_mask_4) {
-                rg_value[mask_index] = 9;
-                rg_output_value_to_input_value[9] = mask_index;
-            }
-        }
-    }
-    // Fourth pass
-    // We have 1,4,7,8  3,5   0,9  ->  0,1,3,4,5,7,8,9 We need 2 and 6 
-    // 2 is the only one missing with 5 segments.
-    // 6 is the only one missing with 6 segents.
-    for (int mask_index = 0; mask_index < 10; mask_index++) {
-        unsigned char segment_count = count_segments(rg_mask[mask_index]);
+        segment_mask_t mask = ar_mask[mask_index];
+        unsigned char segment_count = count_segments(ar_mask[mask_index]);
         if (segment_count == 5) {
             /* The value is
-            * 2   acdeg       1011101
-            * 3   acdfg       1011011
-            * 5   abdfg       1101011
-            * */
-            // If the mask undefined, it is a 2
-            if (rg_mask[mask_index] == UNDEFINED_MASK) {
-                rg_value[mask_index] = 2;
-                rg_output_value_to_input_value[2] = mask_index;
+            * 2   acdeg 1011101 or
+            * 3   acdfg 1011011 or
+            * 5   abdfg 1101011
+            */
+            // If the mask does not have signal c, it is 5
+            if ((mask & signal_c) != signal_c) {
+                ar_value[mask_index] = 5;
             }
-        }
-        else if (segment_count == 6) {
-            /* The value is
-            * 0   abcefg      1110111
-            * 6   abdefg      1101111
-            * 9   abcdfg      1111011
-            * */
-            // If the mask undefined, it is a 6
-            if (rg_mask[mask_index] == UNDEFINED_MASK) {
-                rg_value[mask_index] = 6;
-                rg_output_value_to_input_value[6] = mask_index;
+            // If the mask has signal e, it is 2
+            else if ((mask & signal_e) == signal_e) {
+                ar_value[mask_index] = 2;
             }
         }
     }
-}
-
-int map_segment_to_counter(segment_mask_t segment_mask, segment_mask_t* rg_mask, unsigned char* rg_value) {
+#ifdef PRINT_DEBUG
     for (int mask_index = 0; mask_index < 10; mask_index++) {
-        if (rg_mask[mask_index] == segment_mask)
-            return rg_value[mask_index];
+        printf("values: %0d, %0d, %0d, %0d, %0d, %0d, %0d, %0d, %0d, %0d\n", ar_value[0], ar_value[1], ar_value[2], ar_value[3], ar_value[4],
+            ar_value[5], ar_value[6], ar_value[7], ar_value[8], ar_value[9]);
     }
-    printf("map_segment_to_counter did not find a match for segment_mask %0b\n", segment_mask);
-    exit(-1);
+#endif
 }
 
 /**
-* Given a segment_mask_t and a pointer to an array of segment masks, return the index in the array.
+* Given a segment mask, an array of 10 unique segment masks, 
+* and a parallel array of mask values, return the value of the input segment mask.
 *
-* @param    segment_mask segment mask to match
-* @param    p_rg_segment_mask points to array of 10 segment masks.
-* @retval   returns index 0..0
+* @param segment_mask   the segment mask to map to a value
+* @param    ar_mask an array of 10 unique segment masks
+* @param    ar_value a parallel array of 10 values that correspond to ar_mask
 *
 */
-int index_from_segment_mask(segment_mask_t segment_mask, segment_mask_t* p_rg_segment_mask) {
-    for (int index = 0; index < 10; index++)
-        if (segment_mask == p_rg_segment_mask[index]) return index;
-    printf("segment mask %0x not found in segment mask array\n", segment_mask);
+int map_segment_to_counter(segment_mask_t segment_mask, segment_mask_t ar_mask[10], unsigned char ar_value[10]) {
+    for (int mask_index = 0; mask_index < 10; mask_index++) {
+        if (ar_mask[mask_index] == segment_mask)
+            return ar_value[mask_index];
+    }
+    printf("map_segment_to_counter did not find a match for segment_mask %0x\n", segment_mask);
     exit(-1);
 }
 
@@ -246,51 +217,56 @@ segment_mask_t create_segment_mask_from_string(const char** p_input) {
 * @param    p_pattern   pointer to segment_mask_t
 */
 void show_segment(segment_mask_t segment_mask) {
+#ifdef PRINT_DEBUG
     printf("pattern with %d segments: ", count_segments(segment_mask));
     for (int segment_index = 0; segment_index < 8; segment_index++) {
         if (segment_mask & (1 << (6 - segment_index)))
             printf("%c", 'a' + segment_index);
     }
     printf("\n");
+#endif
 }
 
 /**
-* Create array of 10 signal masks from a string of 10 unique signals
-*
-* @param    p_input_string   pointer to pointer to string that contains 10 segments
-*           point to string gets increments to point to next character following last segment.
-* @param    p_rg_segment_array   pointer to array of 10 segment_mask_t
-*/
-static void create_signal_mask_array_from_string(char** p_input_string, segment_mask_t* p_rg_segment_array) {
-    for (int pattern_index = 0; pattern_index < 10; pattern_index++) {
-        p_rg_segment_array[pattern_index] = create_segment_mask_from_string(p_input_string);
-        show_segment(p_rg_segment_array[pattern_index]);
-    }
-}
-/**
-* Count the number of unique segments from a string of input.
+* Given a string of input, return the number of unique segments 
+* and the total value of all the 4-digit counters.
+*   Each entry of the input string consists of ten unique signal patterns, 
+*   a | delimiter, and a four digit output value.
+*   The string ends with a \0
 *
 * @param    input   pointer to string in memory.
-*   Each entry consists of ten unique signal patterns, a | delimiter,
-*   and a four digit output value.
-*   The string ends with a \0
+* @param    p_num_unique_segments_ret pointer to the number of unique segments returned.
+* @retval   returns the total value of all the 4-digit counters.
 */
-void count_unique_segments(char* input) {
+int count_unique_segments(char *input, int *p_num_unique_segments_ret) {
     segment_mask_t segment;
-    int num_unique_counters = 0;
+    int num_unique_segments = 0;
+    int input_string_number = 0;
+    int four_digit_display_value = 0;
+    int total_digit_display_value = 0;
+    int counter[4];
+
+    // Array of 10 unique input masks in the order received.
+    segment_mask_t ar_input_mask[10];
+
+    // Array parallel to ar_input_mask
+    unsigned char ar_map_input_mask_to_value[10];
+
     // Until end of string
     while (1) {
-        // Discard the 10 unique segments.
+        // Read the 10 unique segments.
         for (int signal_index = 0; signal_index < 10; signal_index++) {
             segment = create_segment_mask_from_string(&input);
-            rg_input_mask[signal_index] = segment;
+            ar_input_mask[signal_index] = segment;
             if (count_segments(segment) == 0)
                 // Returns 0 when it detects \0 for end of string
                 goto show_counts;
         }
-        map_masks_to_values(rg_input_mask, rg_map_input_mask_to_value);
+        // Map the 10 segments to 10 values.
+        map_masks_to_values(ar_input_mask, ar_map_input_mask_to_value);
+        
         // Read the four counters
-        for (int count = 0; count < 4; count++) {
+        for (int counter_index = 0; counter_index < 4; counter_index++) {
             segment = create_segment_mask_from_string(&input);
             // If it's one of the four unique patterns, 
             // increment the counter and display the pattern.
@@ -304,25 +280,35 @@ void count_unique_segments(char* input) {
                 || (num_segments == 4)
                 || (num_segments == 3)
                 || (num_segments == 7)) {
-                num_unique_counters++;
+                num_unique_segments++;
                 show_segment(segment);
             }
-            int counter = map_segment_to_counter(segment, rg_input_mask, rg_map_input_mask_to_value);
+            // Get the value of the current counter.
+            counter[counter_index] = map_segment_to_counter(segment, ar_input_mask, ar_map_input_mask_to_value);
         }
+        // Get the value of the four-digit display
+        four_digit_display_value = 0;
+        for (int counter_index = 0; counter_index < 4; counter_index++) {
+            int counter_value = counter[counter_index];
+            four_digit_display_value = four_digit_display_value * 10 + counter_value;
+        }
+        // Increment the total counter value
+        total_digit_display_value += four_digit_display_value;
+        input_string_number++;
     }
 show_counts:
-    printf("%d unique counters found\n", num_unique_counters);
+    *p_num_unique_segments_ret = num_unique_segments;
+    return total_digit_display_value;
 }
 
 /**
-* Give a file name, open the file of signal pattern entries,
-* open the file, read it into memory,
+* Give a file name, open the file of signal pattern entries, read it into memory,
 * store a \0 following the last character to signal end of file.
-* Count the number of unique segments.
 *
 * @param    file_name   path to input file.
+* @retval   returns pointer to buffer that contains input string
 */
-void count_puzzle_unique_segments(char* file_name) {
+char* read_input(char* file_name) {
     FILE* input_file_handle = fopen(file_name, "rb");
     if (input_file_handle == NULL) {
         fprintf(stderr, "Error reading input_buffer %s: %s\n", file_name, strerror(errno));
@@ -330,147 +316,49 @@ void count_puzzle_unique_segments(char* file_name) {
     }
     // Find out how many bytes are in the file.
     fseek(input_file_handle, 0, SEEK_END);
-    unsigned file_size = ftell(input_file_handle);
+    size_t file_size = ftell(input_file_handle);
     rewind(input_file_handle);
 
     // Allocate a buffer to read in the file.
     // Allocate one extra byte so we can store 0 at the end.
     char* input_buffer = (char*)malloc(file_size) + 1;
     if (input_buffer == NULL) {
-        printf("Unable to allocate input_buffer buffer %d bytes\n", file_size);
+        printf("Unable to allocate input_buffer buffer %zu bytes\n", file_size);
         exit(-1);
     }
 
     size_t bytes_read = fread((void*)input_buffer, sizeof(char), file_size, input_file_handle);
     // Make sure we read the whole enchilada.
     if (bytes_read != file_size) {
-        printf("Error eof reading %s: %s. Expected %lu bytes, read %lu bytes\n",
+        printf("Error eof reading %s: %s. Expected %zu bytes, read %zu bytes\n",
             file_name, strerror(errno), bytes_read, file_size);
         exit(-1);
     }
     fclose(input_file_handle);
     input_buffer[file_size] = 0; // Store 0 following the last byte to assure end of string.
-
-    // Count and display the number of unique segments.
-    count_unique_segments(input_buffer);
+    return input_buffer;
 }
 
-/*
-* Thinking about the next problem.
-* Find input2 with 2 signals.   ab 1100000 This will map to segment2  cf: 0010010
-* Find input3 with 3 signals.  dab 1101000 This will map to segment3 acf: 1010010
-* input2 and input3 have 2 signals in common and two segments in common.
-* We can see signals and segments in common by ANDing them:
-*         signals in common        1100000       segments in common       0010010
-* If we calculate ~input2 & input3 we will get the one signal that is different.
-*                  ~input2         0011111
-*                   input3         1101000
-*         ~input2 & input3         0001000   signal that is different
-* If we calculate ~segment2 & segment3 we will get the one segment that is different.
-*                 ~segment2        1101101
-*                  segment3        1010010
-*       ~segment2 & segment3             segment that is different
-* This gives our first mapping:
-* signal d maps to segment a       0001000                                1000000
-*
-* Step 2: We have looked at signal2 with 2 signals and signal3 if 3 signals
-if we remove acf from every other segment, what is left
-0   abcefg      1110111 6  3   77  119
-1
-2   acdeg       1011101 5  3   5d  093
-3   acdfg       1011011 5  3   58  091
-5   abdfg       1101011 5  3   68  107
-6   abdefg      1101111 6  3   67  103
-7
-8   abcdefg     1111111 7  1   7f  127
-9   abcdfg      1111011 6  3   7b  123
-        acf     1010010
-       ~acf     0101101
-                0000001 g
-if we remove acf from every other signal, what is left
-acedgfb 1111111
-cdfbe   0111110
-gcdfa   1011011
-fbcad   1111010
-cefabd  1111110
-cdfgeb  0111111
-cagedb  1111101
-abd     1101000
-~abd    0010111
-        0010000  AhHa! signal c 0010000 maps to segment g 0000001
-                       signal d 0001000 maps to segment a 1000000                                1000000
-Step 3:
-* The three segments have 3 bits in common
-* 2   acdeg       1011101
-* 3   acdfg       1011011
-* 5   abdfg       1101011
-*                 1001001 we already have a and g. That leaves d 0001000
-
-* Find the 3 signals with five signals and AND them together
-*  fdcge   0011111
-*  fecdb   0111110
-*  fabcd   1111010
-           0011010 we already have c and d. That leaves f 0000010
-                   f 0000010 maps to d 0001000
-                       signal c 0010000 maps to segment g 0000001
-                       signal d 0001000 maps to segment a 1000000                                1000000
-                       signal f 0000010 maps to segment d 0001000
-                                0011010 segments we have
-                                1100101 ~segments we have
-Step 4:
-The three segments with six signals have 4 bits in common
-0   abcefg      1110111 6  3   77  119
-6   abdefg      1101111 6  3   67  103
-9   abcdfg      1111011 6  3   7b  123
-                1100011 AND of all the bits
-                1001001 we have bits adg
-                0110110 ~adg
-                0000010 then e is left 0000010
-
-find the three signals with six signals
-acedgfb cdfbe gcdfa fbcad dab cefabd cdfgeb eafb cagedb ab
-cefabd 1111110
-cdfgeb 0111111
-cagedb 1111101
-       0111100 AND of all the bits
-        we have bits
-
-if we remove acfg from every other segment, what is left
-0   abcefg      1110111 6  3   77  119
-2   acdeg       1011101 5  3   5d  093
-3   acdfg       1011011 5  3   58  091
-5   abdfg       1101011 5  3   68  107
-6   abdefg      1101111 6  3   67  103
-8   abcdefg     1111111 7  1   7f  127
-9   abcdfg      1111011 6  3   7b  123
-        acfg    1010011
-       ~acfg    0101100
-
-if we remove acfg from every other signal, what is left
-acedgfb 1111111
-cdfbe   0111110
-gcdfa   1011011
-fbcad   1111010
-cefabd  1111110
-cdfgeb  0111111
-cagedb  1111101
-abd     1101000
-~abd    0010111
-
-*/
-/**
-* Give a pointer to an input string, create rg_input_mask
-*
-* @param    file_name   path to input file.
-*/
-create_signal_map(char** p_input, segment_mask_t* p_mask_ret) {
-
-}
-char* counter_signals = "abcefg cf acdeg acdfg bcdf abdfg abdefg acf abcdefg abcdfg";
 int main(int argc, char* argv[]) {
-    char* p_counter_signals = counter_signals;
-    create_signal_mask_array_from_string(&p_counter_signals, rg_signal_to_output_mask);
-    count_puzzle_unique_segments("example.txt");
-    count_puzzle_unique_segments("puzzle_input.txt");
+    // For debugging, see if we get the expected counter value for the first example.
+    int num_unique_segments;
+    int counter = count_unique_segments("acedgfb cdfbe gcdfa fbcad dab cefabd cdfgeb eafb cagedb ab | cdfeb fcadb cdfeb cdbaf",
+        &num_unique_segments);
+
+    // Read the example 
+    char *input_buffer = read_input("example.txt");
+    
+    // Count and display the number of unique segments in example.txt.
+    int counter_total = count_unique_segments(input_buffer, &num_unique_segments);
+    printf("Number of unique segments for example.txt: %d, Total counter value: %d\n",
+        num_unique_segments, counter_total);
+
+    // Read the puzzle input.
+    input_buffer = read_input("puzzle_input.txt");
+
+    // Count and display the number of unique segments in puzzle_input.txt.
+    counter_total = count_unique_segments(input_buffer, &num_unique_segments);
+    printf("Number of unique segments for puzzle_input.txt: %d, Total counter value: %d\n",
+        num_unique_segments, counter_total);
     return 0;
 }
